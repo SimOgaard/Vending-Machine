@@ -1,5 +1,16 @@
 // TODO
-// Define values in onWake that are currently defined in code
+// Test //
+// Get_Inserted_Value() needs too be tested so we have the right if(values)
+
+// Set all pins //
+// Read button to know when they want money in return
+// Start_Motor(y,x) and Stop_Motor(y,x) y to ground and x to power
+// Stash_Coin() what servo to turn on to dispose that coin to the stash
+// Coin_Sorter() which motor to start to sort the incomming money
+// Return_Coin() which motor to return that coin
+
+// Set values (EndGame) //
+// Set motormatrix and cost matrix so we know what dispens what, and for how much
 
 // LED
 const byte red_pin = 2;
@@ -15,7 +26,7 @@ enum color_mode
   single_color
 };
 
-const byte[3] const_color = {255, 255, 255};
+const byte const_color[3] = {255, 255, 255};
 
 // IR sensor
 const byte ir_coin_pin_1 = 2;
@@ -36,6 +47,12 @@ const byte inductive_pin = 2;
 bool inductive_val = 0;
 
 // BUTTONS / MOTOR
+unsigned long motor_time_start;
+unsigned int time = 0;
+
+unsigned int time_movement;
+unsigned int time_coin;
+
 const byte button_pin_start = 5; // ranges from value to value + 9
 byte button_value = 0; // range 0 - 10 for each button
 
@@ -48,6 +65,9 @@ byte motor_power = 255;
 
 // COIN
 #include <EEPROM.h>
+byte EEPROMMemoryValue = 0;
+byte max_coin_in_storage = 20;
+
 enum coin_adress
 {
   adress_coin_1,
@@ -93,19 +113,19 @@ void setup()
 void loop()
 {
   // LED
-  Change_Color_Mode(color_mode single_color);
+  Change_Color_Mode(single_color);
 
   // check coin thingies
   if (Coin_Inserted())
   {
     // valid coin has been inserted
-    byte value = EEPROM.read(adress_current_inserted_value);
-    value += Get_Inserted_Value();
-    EEPROM.write(adress_current_inserted_value, value);
+    EEPROMMemoryValue = EEPROM.read(adress_current_inserted_value);
+    EEPROMMemoryValue += Get_Inserted_Value();
+    EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
   }
 
   // check if they want money in return
-  if ()
+  if (true)
   {
     Return_Money(EEPROM.read(adress_current_inserted_value));
   }
@@ -125,7 +145,7 @@ void loop()
 // LED functions
 void Change_Color_Mode(color_mode mode)
 {
-  switch (color_mode mode)
+  switch (mode)
   {
     case single_color:
       Color_Mode_Single_Color();
@@ -192,30 +212,30 @@ bool Coin_Inserted()
 
 byte Get_Inserted_Value()
 {
-  unsigned int time_movement = time_ir_sensor_1_last_value - time_ir_sensor_2_last_value; // hur länge det tog coinet att flytta sig från sensor 1 till 2
-  unsigned int time_coin = time_ir_sensor_1_first_value - time_ir_sensor_1_last_value; // hur länge sensor 1 har sett coinet
+  time_movement = time_ir_sensor_1_last_value - time_ir_sensor_2_last_value; // hur länge det tog coinet att flytta sig från sensor 1 till 2
+  time_coin = time_ir_sensor_1_first_value - time_ir_sensor_1_last_value; // hur länge sensor 1 har sett coinet
 
-  if ()
+  if (true)
   {
-    Add_To_EEPROM_Coin_Memory(adress_coin_1);
+    Add_To_EEPROM_Coin_Memory(adress_coin_1, type_coin_1);
     Coin_Sorter(type_coin_1);
     return type_coin_1;
   }
-  else if ()
+  else if (true)
   {
-    Add_To_EEPROM_Coin_Memory(adress_coin_2);
+    Add_To_EEPROM_Coin_Memory(adress_coin_2, type_coin_2);
     Coin_Sorter(type_coin_2);
     return type_coin_2;
   }
-  else if ()
+  else if (true)
   {
-    Add_To_EEPROM_Coin_Memory(adress_coin_5);
+    Add_To_EEPROM_Coin_Memory(adress_coin_5, type_coin_5);
     Coin_Sorter(type_coin_5);
     return type_coin_5;
   }
-  else if()
+  else if(true)
   {
-    Add_To_EEPROM_Coin_Memory(adress_coin_10);
+    Add_To_EEPROM_Coin_Memory(adress_coin_10, type_coin_10);
     Coin_Sorter(type_coin_10);
     return type_coin_10;
   }
@@ -226,12 +246,12 @@ byte Get_Inserted_Value()
   }
 }
 
-void Add_To_EEPROM_Coin_Memory(byte adress)
+void Add_To_EEPROM_Coin_Memory(byte address, coin_type type)
 {
   byte value = EEPROM.read(address);
   if (value + 1 > max_coin_in_storage)
   {
-    // ta bort 1 coin ner till big box of storage
+    Stash_Coin(type);
   }
   else
   {
@@ -239,9 +259,14 @@ void Add_To_EEPROM_Coin_Memory(byte adress)
   }
 }
 
+void Stash_Coin(coin_type type)
+{
+  // ta bort 1 coin av type type ner till big box of storage
+}
+
 void Coin_Sorter(coin_type type)
 {
-  switch (coin_type type)
+  switch (type)
   {
     case type_coin_1:
       break;
@@ -266,29 +291,34 @@ void Coin_Sorter(coin_type type)
 
 void Return_Money(byte money_to_return)
 {
-  while (mone_to_return != 0)
+  while (money_to_return != 0)
   {
-    if (mone_to_return >= 10){
+    if (money_to_return >= 10){
       Return_Coin(10);
-      mone_to_return -= 10;
+      money_to_return -= 10;
     }
-    else if (mone_to_return >= 5)
+    else if (money_to_return >= 5)
     {
       Return_Coin(5);
-      mone_to_return -= 5;
+      money_to_return -= 5;
     }
-    else if (mone_to_return >= 2)
+    else if (money_to_return >= 2)
     {
       Return_Coin(2);
-      mone_to_return -= 2;
+      money_to_return -= 2;
     }
     else
     {
       Return_Coin(1);
-      mone_to_return -= 1;
+      money_to_return -= 1;
     }
   }
   EEPROM.write(adress_current_inserted_value, 0);
+}
+
+void Return_Coin(int coin_type)
+{
+  // motor functions to return sed money
 }
 
 // BUTTON functions
@@ -296,7 +326,7 @@ bool Button_Search()
 {
   for (byte search_index = 0; search_index < 10; search_index++)
   {
-    if (digitalRead(button_pin + search_index))
+    if (digitalRead(button_pin_start + search_index))
     {
       button_value = search_index;
       return true;
@@ -313,15 +343,15 @@ bool Motor_Search()
     for (byte x = 0; x < 4; x++)
     {
       if (motor_matrix[y][x] == button_value){
-        if (cost_matrix[y][z] > EEPROM.read(adress_current_inserted_value)) // no monie
+        if (cost_matrix[y][x] > EEPROM.read(adress_current_inserted_value)) // no monie
         {
           Serial.println("no monie");
         }
         else if (Return_Items(y, x))
         {
-          byte value = EEPROM.read(adress_current_inserted_value);
-          value -= cost_matrix[y][z];
-          EEPROM.write(adress_current_inserted_value, value);
+          EEPROMMemoryValue = EEPROM.read(adress_current_inserted_value);
+          EEPROMMemoryValue -= cost_matrix[y][x];
+          EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
 
           motor_ground = y;
           motor_power = x;
@@ -343,8 +373,8 @@ bool Return_Items(byte y, byte x)
   y += motor_ground_pin_start;
   x += motor_power_pin_start;
 
-  const unsigned long motor_time_start = millis();
-  unsigned int time = 0; 
+  motor_time_start = millis();
+  time = 0; 
 
   Start_Motor(y, x);
 
