@@ -39,8 +39,8 @@ unsigned long time_ir_sensor_1_first_value;
 unsigned long time_ir_sensor_1_last_value;
 unsigned long time_ir_sensor_2_last_value;
 
-const unsigned int item_sensor_delay = 1000;
-const unsigned int motor_time_on = 500;
+const unsigned int item_sensor_delay = 500;
+const unsigned int motor_time_on = 1000;
 
 // INDUCTIVE sensor
 const byte inductive_pin = 2;
@@ -50,16 +50,16 @@ bool inductive_val = 0;
 unsigned long motor_time_start;
 unsigned int time = 0;
 
-unsigned int time_movement;
-unsigned int time_coin;
+unsigned int time_coin_movement;
+unsigned int time_coin_thickness;
 
 const byte button_pin_start = 5; // ranges from value to value + 9
 byte button_value = 0; // range 0 - 10 for each button
 
 const byte motor_ground_pin_start = 14; // ranges from value to value + 4
 const byte motor_power_pin_start = 18; // ranges from value to value + 3
-byte motor_matrix[5][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 255}, {0, 0, 0, 255}, {0, 0, 0, 0}}; // holds button value, search through it find button value, return index 1 and index 2
-byte cost_matrix[5][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 255}, {0, 0, 0, 255}, {0, 0, 0, 0}}; // holds button value, search through it find button value, return index 1 and index 2
+const byte motor_matrix[5][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 255}, {0, 0, 0, 255}, {0, 0, 0, 0}};
+const byte cost_matrix[5][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 255}, {0, 0, 0, 255}, {0, 0, 0, 0}};
 byte motor_ground = 255;
 byte motor_power = 255;
 
@@ -88,10 +88,21 @@ enum coin_type
   type_invalid_metal = 12
 };
 
+// LCD
+#include <LiquidCrystal.h>
+
+const byte rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+unsigned long last_unique_message = 0;
+const int message_timer = 5000;
+const int message_left_timer = 60000;
+
 void setup()
 {
   // SERIAL
   Serial.begin(9600);
+  lcd.begin(16, 2);
 
   // INPUT ANALOG
   // pinMode(pin, INPUT);
@@ -115,11 +126,30 @@ void loop()
   // LED
   Change_Color_Mode(single_color);
 
+  EEPROMMemoryValue = EEPROM.read(adress_current_inserted_value);
+  if (EEPROMMemoryValue > 0 && millis() - last_unique_message > message_timer)
+  {
+    Write_To_LCD("Du har " + String(EEPROMMemoryValue) + "kr insatt", 0, 0);
+  } else if (EEPROMMemoryValue == 0 && millis() - last_unique_message > message_timer)
+  {
+    Write_To_LCD("plz buy art now", 0, 0);
+    Write_To_LCD("do it...", 0, 1);
+  }
+  
+  if (EEPROMMemoryValue > 0 && millis() - last_unique_message > message_afk_timer)
+  {
+    Write_To_LCD("Är du kvar?", 0, 1);
+  }
+  if (EEPROMMemoryValue > 0 && millis() - last_unique_message > message_left_timer)
+  {
+    Write_To_LCD("Avbryter köpet", 0, 0);
+    Return_Money(EEPROMMemoryValue);
+  }
+
   // check coin thingies
   if (Coin_Inserted())
   {
     // valid coin has been inserted
-    EEPROMMemoryValue = EEPROM.read(adress_current_inserted_value);
     EEPROMMemoryValue += Get_Inserted_Value();
     EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
   }
@@ -127,7 +157,8 @@ void loop()
   // check if they want money in return
   if (true)
   {
-    Return_Money(EEPROM.read(adress_current_inserted_value));
+    Write_To_LCD("Välkommen åter", 0, 0);
+    Return_Money(EEPROMMemoryValue);
   }
 
   // When you proceed to try and buy
@@ -137,7 +168,7 @@ void loop()
     if (Motor_Search())
     {
       // an item has been dispensed
-      Return_Money(EEPROM.read(adress_current_inserted_value));
+      Return_Money(EEPROMMemoryValue);
     }
   }
 }
@@ -212,36 +243,42 @@ bool Coin_Inserted()
 
 byte Get_Inserted_Value()
 {
-  time_movement = time_ir_sensor_1_last_value - time_ir_sensor_2_last_value; // hur länge det tog coinet att flytta sig från sensor 1 till 2
-  time_coin = time_ir_sensor_1_first_value - time_ir_sensor_1_last_value; // hur länge sensor 1 har sett coinet
+  time_coin_movement = time_ir_sensor_1_last_value - time_ir_sensor_2_last_value; // hur länge det tog coinet att flytta sig från sensor 1 till 2
+  time_coin_thickness = time_ir_sensor_1_first_value - time_ir_sensor_1_last_value; // hur länge sensor 1 har sett coinet
 
+  last_unique_message = millis() - message_timer;
   if (true)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_1, type_coin_1);
     Coin_Sorter(type_coin_1);
+    Write_To_LCD("+" + String(type_coin_1) + "kr", 0, 1);
     return type_coin_1;
   }
   else if (true)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_2, type_coin_2);
     Coin_Sorter(type_coin_2);
+    Write_To_LCD("+" + String(type_coin_2) + "kr", 0, 1);
     return type_coin_2;
   }
   else if (true)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_5, type_coin_5);
     Coin_Sorter(type_coin_5);
+    Write_To_LCD("+" + String(type_coin_5) + "kr", 0, 1);
     return type_coin_5;
   }
   else if(true)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_10, type_coin_10);
     Coin_Sorter(type_coin_10);
+    Write_To_LCD("+" + String(type_coin_10) + "kr", 0, 1);
     return type_coin_10;
   }
   else
   {    
     Coin_Sorter(type_invalid);
+    Write_To_LCD("Ogiltig peng", 0, 1);
     return type_invalid;
   }
 }
@@ -261,7 +298,7 @@ void Add_To_EEPROM_Coin_Memory(byte address, coin_type type)
 
 void Stash_Coin(coin_type type)
 {
-  // ta bort 1 coin av type type ner till big box of storage
+  // ta bort 1 coin av typen type ner till big box of storage
 }
 
 void Coin_Sorter(coin_type type)
@@ -291,32 +328,34 @@ void Coin_Sorter(coin_type type)
 
 void Return_Money(byte money_to_return)
 {
+  last_unique_message = millis() - message_timer;
+  Write_To_LCD("Returnerar " + String(money_to_return) + "kr", 0, 1);
   while (money_to_return != 0)
   {
     if (money_to_return >= 10){
-      Return_Coin(10);
+      Return_Coin(true);
       money_to_return -= 10;
     }
     else if (money_to_return >= 5)
     {
-      Return_Coin(5);
+      Return_Coin(true);
       money_to_return -= 5;
     }
     else if (money_to_return >= 2)
     {
-      Return_Coin(2);
+      Return_Coin(true);
       money_to_return -= 2;
     }
     else
     {
-      Return_Coin(1);
+      Return_Coin(true);
       money_to_return -= 1;
     }
   }
   EEPROM.write(adress_current_inserted_value, 0);
 }
 
-void Return_Coin(int coin_type)
+void Return_Coin(bool motor1)
 {
   // motor functions to return sed money
 }
@@ -343,25 +382,30 @@ bool Motor_Search()
     for (byte x = 0; x < 4; x++)
     {
       if (motor_matrix[y][x] == button_value){
-        if (cost_matrix[y][x] > EEPROM.read(adress_current_inserted_value)) // no monie
+        if (cost_matrix[y][x] > EEPROMMemoryValue)
         {
-          Serial.println("no monie");
+          Write_To_LCD("Saknar " + String(cost_matrix[y][x] - EEPROMMemoryValue) + "kr", 0, 1);
+
+          return false;
         }
         else if (Return_Items(y, x))
         {
-          EEPROMMemoryValue = EEPROM.read(adress_current_inserted_value);
           EEPROMMemoryValue -= cost_matrix[y][x];
           EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
 
           motor_ground = y;
           motor_power = x;
+
+          Write_To_LCD("Bra köp!", 0, 0);
           return true;
         }
       }
     }
   }
 
-  Serial.println("either no monie or item is not existence");
+  last_unique_message = millis();
+  Write_To_LCD("Sökt produkt är", 0, 0);
+  Write_To_LCD("slut i lager", 0, 1);  
 
   motor_ground = 255;
   motor_power = 255;
@@ -383,7 +427,7 @@ bool Return_Items(byte y, byte x)
     time = millis() - motor_time_start;
 
     if (time >= motor_time_on){
-      Stop_Motor(y, x); // stop motor
+      Stop_Motor(y, x);
     }
 
     ir_item_val = digitalRead(ir_item_pin);
@@ -405,4 +449,11 @@ void Start_Motor(byte y, byte x)
 void Stop_Motor(byte y, byte x)
 {
   // stop motor
+}
+
+// LCD
+void Write_To_LCD(String message, byte col, byte row)
+{
+  lcd.setCursor(col, row);
+  lcd.print(message);
 }
