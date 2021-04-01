@@ -40,7 +40,7 @@ unsigned long time_ir_sensor_1_last_value;
 unsigned long time_ir_sensor_2_last_value;
 
 const unsigned int item_sensor_delay = 500;
-const unsigned int motor_time_on = 1000;
+//const unsigned int motor_time_on = 1000;
 
 // INDUCTIVE sensor
 const byte inductive_pin = 2;
@@ -96,6 +96,7 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 unsigned long last_unique_message = 0;
 const int message_timer = 5000;
+const int message_afk_timer = 30000;
 const int message_left_timer = 60000;
 
 void setup()
@@ -425,11 +426,11 @@ bool Return_Items(byte y, byte x)
   do
   {
     time = millis() - motor_time_start;
-
+/*
     if (time >= motor_time_on){
       Stop_Motor(y, x);
     }
-
+*/
     ir_item_val = digitalRead(ir_item_pin);
     if (ir_item_val)
     {
@@ -445,12 +446,12 @@ void Start_Motor(byte y, byte x)
 {
   // start motor
 }
-
+/*
 void Stop_Motor(byte y, byte x)
 {
   // stop motor
 }
-
+*/
 // LCD
 void Write_To_LCD(String message, byte col, byte row)
 {
