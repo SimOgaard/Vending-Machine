@@ -8,7 +8,9 @@ void setup() {
 
 void loop() {
   inductiveVal = digitalRead(inductivePin);
-  delay(50);
-  Serial.println(inductiveVal);
+  if (!inductiveVal)
+  {
+    Serial.println("FoundCoin");
+  }
 }
 

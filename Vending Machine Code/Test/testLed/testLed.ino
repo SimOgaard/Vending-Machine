@@ -1,6 +1,6 @@
-#define red_pin 2
-#define green_pin 3
-#define blue_pin 4
+#define red_pin A0
+#define green_pin A1
+#define blue_pin A2
 /*
 int red_value = 0;
 int green_value = 0;
@@ -8,15 +8,18 @@ int blue_value = 0;
 */
 void setup() {
   Serial.begin(9600);
+  
   pinMode(red_pin, OUTPUT);
   pinMode(green_pin, OUTPUT);
   pinMode(blue_pin, OUTPUT);
 }
 
 void loop() {
-  int red_value = 255;
-  int green_value = 0;
+  int red_value = 0;
+  int green_value = 255;
   int blue_value = 0;
+  RGB_color(red_value, green_value, blue_value);
+  /*
   for (blue_value = 0; blue_value < 255; blue_value++) {
     RGB_color(red_value, green_value, blue_value);
   }
@@ -34,7 +37,7 @@ void loop() {
   }
   for (green_value = 255; green_value > 0; green_value--) {
     RGB_color(red_value, green_value, blue_value);    
-  }
+  }*/
 /*
   int red_value = 0;
   int green_value = 0;

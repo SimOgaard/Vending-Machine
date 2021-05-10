@@ -26,7 +26,7 @@ enum color_mode
   single_color
 };
 
-const byte const_color[3] = {255, 255, 255};
+byte const_color[3] = {160, 0, 255};
 
 // IR sensor
 const byte ir_coin_pin_1 = 2;
@@ -40,7 +40,7 @@ unsigned long time_ir_sensor_1_last_value;
 unsigned long time_ir_sensor_2_last_value;
 
 const unsigned int item_sensor_delay = 1000;
-//const unsigned int motor_time_on = 500;
+const unsigned int motor_time_on = 500;
 
 // INDUCTIVE sensor
 const byte inductive_pin = 2;
@@ -164,13 +164,6 @@ void loop()
     EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
   }
 
-  // check if they want money in return
-  if (true)
-  {
-    Write_To_LCD("Välkommen åter", 0, 0);
-    Return_Money(EEPROMMemoryValue);
-  }
-
   // When you proceed to try and buy
   if (Button_Search())
   {
@@ -263,21 +256,21 @@ byte Get_Inserted_Value()
   time_coin_thickness = time_ir_sensor_1_first_value - time_ir_sensor_1_last_value; // hur länge sensor 1 har sett coinet
 
   last_unique_message = millis() - message_timer;
-  if (true)
+  if (false)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_1, type_coin_1);
     Coin_Sorter(type_coin_1);
     Write_To_LCD("+" + String(type_coin_1) + "kr", 0, 1);
     return type_coin_1;
   }
-  else if (true)
+  else if (false)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_2, type_coin_2);
     Coin_Sorter(type_coin_2);
     Write_To_LCD("+" + String(type_coin_2) + "kr", 0, 1);
     return type_coin_2;
   }
-  else if (true)
+  else if (false)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_5, type_coin_5);
     Coin_Sorter(type_coin_5);
@@ -454,7 +447,11 @@ bool Return_Items(byte y, byte x)
   do
   {
     time = millis() - motor_time_start;
-    
+
+    if (time >= motor_time_on){
+      Stop_Motor(y, x);
+    }
+
     ir_item_val = digitalRead(ir_item_pin);
     if (ir_item_val)
     {
@@ -463,15 +460,31 @@ bool Return_Items(byte y, byte x)
 
   } while (time < item_sensor_delay);
 
-  return false;
+  return true;
 }
 
 void Start_Motor(byte y, byte x)
 {
+  for (byte i = 0; i <= 4; i++)
+  {
+    digitalWrite(motor_ground_pin_start + i, HIGH);
+  }
+  for (byte i = 0; i <= 3; i++)
+  {
+    digitalWrite(motor_power_pin_start + i, HIGH);
+  }
 }
 
 void Stop_Motor(byte y, byte x)
 {
+  for (byte i = 0; i <= 4; i++)
+  {
+    digitalWrite(motor_ground_pin_start + i, LOW);
+  }
+  for (byte i = 0; i <= 3; i++)
+  {
+    digitalWrite(motor_power_pin_start + i, LOW);
+  }
 }
 
 // LCD
