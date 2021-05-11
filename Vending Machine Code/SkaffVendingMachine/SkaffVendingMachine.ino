@@ -12,6 +12,8 @@
 // Set values (EndGame) //
 // Set motormatrix and cost matrix so we know what dispens what, and for how much
 
+bool WTF = false;
+
 // LED
 const byte red_pin = A0;
 const byte green_pin = A1;
@@ -37,14 +39,19 @@ bool ir_coin_val_2 = 0;
 bool ir_item_val = 0;
 unsigned long time_ir_sensor_1_first_value;
 unsigned long time_ir_sensor_1_last_value;
+unsigned long time_ir_sensor_2_first_value;
 unsigned long time_ir_sensor_2_last_value;
 
 const unsigned int item_sensor_delay = 1000;
 const unsigned int motor_time_on = 500;
 
+bool is_active_ir_coin_pin_1 = false;
+bool is_active_ir_coin_pin_2 = false;
+
 // INDUCTIVE sensor
 const byte inductive_pin = 2;
 bool inductive_val = 0;
+bool is_metal = false;
 
 // BUTTONS / MOTOR
 unsigned long motor_time_start;
@@ -53,13 +60,14 @@ unsigned int time = 0;
 unsigned int time_coin_movement;
 unsigned int time_coin_thickness;
 
-const byte button_pin_start = 5; // ranges from value to value + 9
+const byte button_pin_start = 40; // ranges from value to value + 9
 byte button_value = 0; // range 0 - 10 for each button
+bool button_is_down = false;
 
 const byte motor_ground_pin_start = 22; // ranges from value to value + 4
 const byte motor_power_pin_start = 27; // ranges from value to value + 3
-const byte motor_matrix[5][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 255}, {0, 0, 0, 255}, {0, 0, 0, 0}};
-const byte cost_matrix[5][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 255}, {0, 0, 0, 255}, {0, 0, 0, 0}};
+const byte motor_matrix[5][4] = {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 0, 255}, {0, 0, 0, 255}, {0, 0, 0, 0}};
+const byte cost_matrix[5][4] = {{10, 10, 20, 30}, {40, 50, 60, 70}, {80, 90, 0, 255}, {0, 0, 0, 255}, {0, 0, 0, 0}};
 byte motor_ground = 255;
 byte motor_power = 255;
 
@@ -91,26 +99,37 @@ enum coin_type
 // LCD
 #include <LiquidCrystal.h>
 
-const byte rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
-LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+LiquidCrystal lcd(5, 6, 7, 8, 9, 10);
 
 unsigned long last_unique_message = 0;
-const int message_timer = 5000;
-const int message_afk_timer = 30000;
-const int message_left_timer = 60000;
+const unsigned int message_timer = 4000;
+const unsigned int message_afk_timer = 15000;
+const unsigned int message_left_timer = 35000;
+
+String message0;
+String message1;
 
 void setup()
 {
   // SERIAL
   Serial.begin(9600);
   lcd.begin(16, 2);
-
+  EEPROM.write(adress_current_inserted_value, 0);
+  if (EEPROM.read(adress_current_inserted_value) > 0)
+  {
+    Write_To_LCD("Hejsan", 0, 0);
+    Write_To_LCD("Du har " + String(EEPROM.read(adress_current_inserted_value)) + "kr", 0, 1);
+  }
+  else
+  {
+    Write_To_LCD("Konstautomat", 0, 0);
+    Write_To_LCD("Nu diabetes fri!", 0, 1);    
+  }
+        
   // INPUT ANALOG
   // pinMode(pin, INPUT);
 
   // INPUT DIGITAL
-  pinMode(ir_coin_pin_1, INPUT);
-  pinMode(ir_coin_pin_2, INPUT);
   pinMode(inductive_pin, INPUT);
 
   // OUTPUT ANALOG
@@ -129,6 +148,39 @@ void setup()
     pinMode(motor_power_pin_start + i, OUTPUT);
     digitalWrite(motor_power_pin_start + i, LOW);
   }
+
+  // INTERRUPT
+  attachInterrupt(digitalPinToInterrupt(ir_coin_pin_1), ir_1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ir_coin_pin_2), ir_2, CHANGE);
+}
+
+void ir_1()
+{
+  if (is_active_ir_coin_pin_1){
+    // no longer sees it
+    time_ir_sensor_1_last_value = micros();
+    is_active_ir_coin_pin_1 = false;
+    return;
+  }
+  time_ir_sensor_1_first_value = micros();
+  is_active_ir_coin_pin_1 = true;
+  // started seeing it
+  return;
+}
+
+void ir_2()
+{
+  if (is_active_ir_coin_pin_2){
+    // no longer sees it
+    time_ir_sensor_2_last_value = micros();
+    is_active_ir_coin_pin_2 = false;
+    Coin_Inserted();
+    return;
+  }
+  time_ir_sensor_2_first_value = micros();
+  is_active_ir_coin_pin_2 = true;
+  // started seeing it
+  return;
 }
 
 void loop()
@@ -137,31 +189,39 @@ void loop()
   Change_Color_Mode(single_color);
 
   EEPROMMemoryValue = EEPROM.read(adress_current_inserted_value);
-  if (EEPROMMemoryValue > 0 && millis() - last_unique_message > message_timer)
+  if (EEPROMMemoryValue > 0)
   {
-    Write_To_LCD("Du har " + String(EEPROMMemoryValue) + "kr insatt", 0, 0);
-  } else if (EEPROMMemoryValue == 0 && millis() - last_unique_message > message_timer)
-  {
-    Write_To_LCD("plz buy art now", 0, 0);
-    Write_To_LCD("do it...", 0, 1);
+    // du är en gammal kund
+    if (millis() - last_unique_message > message_left_timer)
+    {
+      Write_To_LCD("Avbryter kopet", 0, 0);
+      Return_Money(EEPROMMemoryValue);
+    }
+    else if (millis() - last_unique_message > message_afk_timer)
+    {
+      Write_To_LCD("Hallo", 0, 0);
+      Write_To_LCD("Ar du kvar?", 0, 1);      
+    }
+    else if (millis() - last_unique_message > message_timer)
+    {
+      Write_To_LCD("Hejsan", 0, 0);
+      Write_To_LCD("Du har " + String(EEPROMMemoryValue) + "kr", 0, 1);
+    }
   }
-  
-  if (EEPROMMemoryValue > 0 && millis() - last_unique_message > message_afk_timer)
+  else
   {
-    Write_To_LCD("Är du kvar?", 0, 1);
+    // du är ny kund
+    if (millis() - last_unique_message > message_timer)
+    {
+      Write_To_LCD("Konstautomat", 0, 0);
+      Write_To_LCD("Nu diabetes fri!", 0, 1);
+    }
   }
-  if (EEPROMMemoryValue > 0 && millis() - last_unique_message > message_left_timer)
+    
+  inductive_val = digitalRead(inductive_pin);
+  if (!inductive_val && !WTF)
   {
-    Write_To_LCD("Avbryter köpet", 0, 0);
-    Return_Money(EEPROMMemoryValue);
-  }
-
-  // check coin thingies
-  if (Coin_Inserted())
-  {
-    // valid coin has been inserted
-    EEPROMMemoryValue += Get_Inserted_Value();
-    EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
+    is_metal = true;
   }
 
   // When you proceed to try and buy
@@ -208,46 +268,28 @@ void Apply_RGB()
 }
 
 // COIN functions
-bool Coin_Inserted()
-{
-  inductive_val = digitalRead(inductive_pin);
+void Coin_Inserted()
+{  
+  Serial.print(is_metal);      //variable for plotting
+  Serial.print(time_ir_sensor_2_first_value-time_ir_sensor_1_first_value);      //variable for plotting
+  Serial.print(",");              //seperator
+  Serial.print(time_ir_sensor_1_last_value-time_ir_sensor_1_first_value);       //variable for plotting
+  Serial.print(",");              //seperator
+  Serial.println(time_ir_sensor_2_last_value-time_ir_sensor_1_first_value);     //variable for plotting      
 
-  if (!inductive_val)
+  if (is_metal)
   {
-    bool ir_2_seen = false;
-    Coin_Sorter(type_valid_metal);
-
-    while (true)
-    {
-      ir_coin_val_1 = digitalRead(ir_coin_pin_1);
-      if (!ir_coin_val_1){
-        time_ir_sensor_1_first_value = micros();
-        break;
-      }
-    }
-
-    while (!ir_coin_val_1 || !ir_coin_val_2)
-    {
-      ir_coin_val_1 = digitalRead(ir_coin_pin_1);
-      ir_coin_val_2 = digitalRead(ir_coin_pin_2);
-
-      if (!ir_coin_val_1)
-      {
-        time_ir_sensor_1_last_value = micros();
-      }
-      if (!ir_coin_val_2 && !ir_2_seen)
-      {
-        time_ir_sensor_2_first_value = micros();
-        ir_2_seen = true;
-      }
-
-      time_ir_sensor_2_last_value = micros();
-    }
-    return true;
+    is_metal=false;
   }
-  Coin_Sorter(type_invalid_metal);
+  else
+  {
+    Coin_Sorter(type_invalid_metal);
+    return;
+  }
 
-  return false;  
+  EEPROMMemoryValue += Get_Inserted_Value();
+  EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
+  Write_To_LCD("Du har " + String(EEPROMMemoryValue) + "kr ", 0, 1);
 }
 
 byte Get_Inserted_Value()
@@ -255,39 +297,40 @@ byte Get_Inserted_Value()
   time_coin_movement = time_ir_sensor_1_last_value - time_ir_sensor_2_last_value; // hur länge det tog coinet att flytta sig från sensor 1 till 2
   time_coin_thickness = time_ir_sensor_1_first_value - time_ir_sensor_1_last_value; // hur länge sensor 1 har sett coinet
 
-  last_unique_message = millis() - message_timer;
+  Serial.println("Get_Inserted_Value");
+  last_unique_message = millis();
   if (false)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_1, type_coin_1);
     Coin_Sorter(type_coin_1);
-    Write_To_LCD("+" + String(type_coin_1) + "kr", 0, 1);
+    Write_To_LCD("+" + String(type_coin_1) + "kr", 0, 0);
     return type_coin_1;
   }
   else if (false)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_2, type_coin_2);
     Coin_Sorter(type_coin_2);
-    Write_To_LCD("+" + String(type_coin_2) + "kr", 0, 1);
+    Write_To_LCD("+" + String(type_coin_2) + "kr", 0, 0);
     return type_coin_2;
   }
-  else if (false)
+  else if (true)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_5, type_coin_5);
     Coin_Sorter(type_coin_5);
-    Write_To_LCD("+" + String(type_coin_5) + "kr", 0, 1);
+    Write_To_LCD("+" + String(type_coin_5) + "kr", 0, 0);
     return type_coin_5;
   }
-  else if(true)
+  else if(false)
   {
     Add_To_EEPROM_Coin_Memory(adress_coin_10, type_coin_10);
     Coin_Sorter(type_coin_10);
-    Write_To_LCD("+" + String(type_coin_10) + "kr", 0, 1);
+    Write_To_LCD("+" + String(type_coin_10) + "kr", 0, 0);
     return type_coin_10;
   }
   else
-  {    
+  {
     Coin_Sorter(type_invalid);
-    Write_To_LCD("Ogiltig peng", 0, 1);
+    Write_To_LCD("Ogiltig peng", 0, 0);
     return type_invalid;
   }
 }
@@ -348,7 +391,8 @@ void Coin_Sorter(coin_type type)
 
 void Return_Money(byte money_to_return)
 {
-  last_unique_message = millis() - message_timer;
+  last_unique_message = millis();
+  Serial.println("Return_Money");
   Write_To_LCD("Returnerar " + String(money_to_return) + "kr", 0, 1);
   while (money_to_return != 0)
   {
@@ -383,15 +427,29 @@ void Return_Coin(coin_type type)
 // BUTTON functions
 bool Button_Search()
 {
-  for (byte search_index = 0; search_index < 10; search_index++)
+  if (WTF)
   {
-    if (digitalRead(button_pin_start + search_index))
+    button_value = 255;
+    button_is_down = false;
+    return false;
+  }
+  
+  for (byte search_index = 0; search_index < 1; search_index++) // 10 123 ABC
+  {
+    if (!digitalRead(button_pin_start + search_index))
     {
+      if (button_is_down)
+      {
+        return false;
+      }
       button_value = search_index;
+      button_is_down = true;
+      Serial.println("is true WTF WTF");
       return true;
     }
   }
   button_value = 255;
+  button_is_down = false;
   return false;
 }
 
@@ -404,7 +462,9 @@ bool Motor_Search()
       if (motor_matrix[y][x] == button_value){
         if (cost_matrix[y][x] > EEPROMMemoryValue)
         {
+          Serial.println("Motor_Search");
           last_unique_message = millis();
+          Write_To_LCD("Kostnad " + String(cost_matrix[y][x]) + "kr", 0, 0);
           Write_To_LCD("Saknar " + String(cost_matrix[y][x] - EEPROMMemoryValue) + "kr", 0, 1);
 
           return false;
@@ -417,17 +477,19 @@ bool Motor_Search()
           motor_ground = y;
           motor_power = x;
 
+          Serial.println("Motor_Search");
           last_unique_message = millis();
-          Write_To_LCD("Bra köp!", 0, 0);
+          Write_To_LCD("Bra kop!", 0, 0);
           return true;
         }
       }
     }
   }
 
+  Serial.println("Motor_Search");
   last_unique_message = millis();
-  Write_To_LCD("Sökt produkt är", 0, 0);
-  Write_To_LCD("slut i lager", 0, 1);  
+//  Write_To_LCD("Sokt produkt ar", 0, 0);
+//  Write_To_LCD("slut i lager", 0, 1);  
 
   motor_ground = 255;
   motor_power = 255;
@@ -436,11 +498,20 @@ bool Motor_Search()
 
 bool Return_Items(byte y, byte x)
 {
+  Write_To_LCD("Bra kop!", 0, 0);
+  Write_To_LCD("Returnerar " + String(0) + "kr", 0, 1);
+  EEPROM.write(adress_current_inserted_value, 0);
+  Start_Motor(y, x);
+  delay(200);
+  Stop_Motor(y, x);
+  
+  return;
+  
   y += motor_ground_pin_start;
   x += motor_power_pin_start;
 
   motor_time_start = millis();
-  time = 0;
+  unsigned long time_1 = 0;
 
   Start_Motor(y, x);
 
@@ -448,7 +519,7 @@ bool Return_Items(byte y, byte x)
   {
     time = millis() - motor_time_start;
 
-    if (time >= motor_time_on){
+    if (time_1 >= motor_time_on){
       Stop_Motor(y, x);
     }
 
@@ -458,13 +529,17 @@ bool Return_Items(byte y, byte x)
       return true;
     }
 
-  } while (time < item_sensor_delay);
+  } while (time_1 < item_sensor_delay);
 
   return true;
 }
 
 void Start_Motor(byte y, byte x)
 {
+  Serial.println("StartMotor");
+  WTF = true;
+  //digitalWrite(motor_ground_pin_start + y, HIGH);
+  //digitalWrite(motor_power_pin_start + x, HIGH);
   for (byte i = 0; i <= 4; i++)
   {
     digitalWrite(motor_ground_pin_start + i, HIGH);
@@ -477,6 +552,7 @@ void Start_Motor(byte y, byte x)
 
 void Stop_Motor(byte y, byte x)
 {
+  Serial.println("StopMotor");
   for (byte i = 0; i <= 4; i++)
   {
     digitalWrite(motor_ground_pin_start + i, LOW);
@@ -490,6 +566,18 @@ void Stop_Motor(byte y, byte x)
 // LCD
 void Write_To_LCD(String message, byte col, byte row)
 {
-  lcd.setCursor(col, row);
-  lcd.print(message);
+  if (row == 0 && message0 != message)
+  {
+    lcd.setCursor(col, row);
+    lcd.print(message+"                ");
+    message0 = message;
+    return;
+  }
+  if (row == 1 && message1 != message)
+  {
+    lcd.setCursor(col, row);
+    lcd.print(message+"                ");
+    message1 = message;
+    return;
+  }
 }

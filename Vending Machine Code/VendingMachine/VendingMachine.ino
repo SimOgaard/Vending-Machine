@@ -37,14 +37,19 @@ bool ir_coin_val_2 = 0;
 bool ir_item_val = 0;
 unsigned long time_ir_sensor_1_first_value;
 unsigned long time_ir_sensor_1_last_value;
+unsigned long time_ir_sensor_2_first_value;
 unsigned long time_ir_sensor_2_last_value;
 
 const unsigned int item_sensor_delay = 1000;
 //const unsigned int motor_time_on = 500;
 
+bool is_active_ir_coin_pin_1 = false;
+bool is_active_ir_coin_pin_2 = false;
+
 // INDUCTIVE sensor
 const byte inductive_pin = 2;
 bool inductive_val = 0;
+bool is_metal = false;
 
 // BUTTONS / MOTOR
 unsigned long motor_time_start;
@@ -53,7 +58,7 @@ unsigned int time = 0;
 unsigned int time_coin_movement;
 unsigned int time_coin_thickness;
 
-const byte button_pin_start = 5; // ranges from value to value + 9
+const byte button_pin_start = 40; // ranges from value to value + 9
 byte button_value = 0; // range 0 - 10 for each button
 
 const byte motor_ground_pin_start = 22; // ranges from value to value + 4
@@ -91,8 +96,7 @@ enum coin_type
 // LCD
 #include <LiquidCrystal.h>
 
-const byte rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
-LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+LiquidCrystal lcd(5, 6, 7, 8, 9, 10);
 
 unsigned long last_unique_message = 0;
 const int message_timer = 5000;
@@ -109,8 +113,6 @@ void setup()
   // pinMode(pin, INPUT);
 
   // INPUT DIGITAL
-  pinMode(ir_coin_pin_1, INPUT);
-  pinMode(ir_coin_pin_2, INPUT);
   pinMode(inductive_pin, INPUT);
 
   // OUTPUT ANALOG
@@ -129,6 +131,39 @@ void setup()
     pinMode(motor_power_pin_start + i, OUTPUT);
     digitalWrite(motor_power_pin_start + i, LOW);
   }
+
+  //INTERRUPT
+  attachInterrupt(digitalPinToInterrupt(ir_coin_pin_1), ir_1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ir_coin_pin_2), ir_2, CHANGE);
+}
+
+void ir_1()
+{
+  if (is_active_ir_coin_pin_1){
+    // no longer sees it
+    time_ir_sensor_1_last_value = micros();
+    is_active_ir_coin_pin_1 = false;
+    return;
+  }
+  time_ir_sensor_1_first_value = micros();
+  is_active_ir_coin_pin_1 = true;
+  // started seeing it
+  return;
+}
+
+void ir_2()
+{
+  if (is_active_ir_coin_pin_2){
+    // no longer sees it
+    time_ir_sensor_2_last_value = micros();
+    is_active_ir_coin_pin_2 = false;
+    Coin_Inserted();
+    return;
+  }
+  time_ir_sensor_2_first_value = micros();
+  is_active_ir_coin_pin_2 = true;
+  // started seeing it
+  return;
 }
 
 void loop()
@@ -139,7 +174,7 @@ void loop()
   EEPROMMemoryValue = EEPROM.read(adress_current_inserted_value);
   if (EEPROMMemoryValue > 0 && millis() - last_unique_message > message_timer)
   {
-    Write_To_LCD("Du har " + String(EEPROMMemoryValue) + "kr insatt", 0, 0);
+    Write_To_LCD("Du har " + String(EEPROMMemoryValue) + "kr", 0, 0);
   } else if (EEPROMMemoryValue == 0 && millis() - last_unique_message > message_timer)
   {
     Write_To_LCD("plz buy art now", 0, 0);
@@ -157,11 +192,10 @@ void loop()
   }
 
   // check coin thingies
-  if (Coin_Inserted())
+  inductive_val = digitalRead(inductive_pin);
+  if (!inductive_val)
   {
-    // valid coin has been inserted
-    EEPROMMemoryValue += Get_Inserted_Value();
-    EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
+    is_metal = true;
   }
 
   // check if they want money in return
@@ -215,46 +249,27 @@ void Apply_RGB()
 }
 
 // COIN functions
-bool Coin_Inserted()
-{
-  inductive_val = digitalRead(inductive_pin);
-
-  if (!inductive_val)
+void Coin_Inserted()
+{  
+  Serial.print(is_metal);      //variable for plotting
+  Serial.print(time_ir_sensor_2_first_value-time_ir_sensor_1_first_value);      //variable for plotting
+  Serial.print(",");              //seperator
+  Serial.print(time_ir_sensor_1_last_value-time_ir_sensor_1_first_value);       //variable for plotting
+  Serial.print(",");              //seperator
+  Serial.println(time_ir_sensor_2_last_value-time_ir_sensor_1_first_value);     //variable for plotting      
+  
+  if (is_metal)
   {
-    bool ir_2_seen = false;
-    Coin_Sorter(type_valid_metal);
-
-    while (true)
-    {
-      ir_coin_val_1 = digitalRead(ir_coin_pin_1);
-      if (!ir_coin_val_1){
-        time_ir_sensor_1_first_value = micros();
-        break;
-      }
-    }
-
-    while (!ir_coin_val_1 || !ir_coin_val_2)
-    {
-      ir_coin_val_1 = digitalRead(ir_coin_pin_1);
-      ir_coin_val_2 = digitalRead(ir_coin_pin_2);
-
-      if (!ir_coin_val_1)
-      {
-        time_ir_sensor_1_last_value = micros();
-      }
-      if (!ir_coin_val_2 && !ir_2_seen)
-      {
-        time_ir_sensor_2_first_value = micros();
-        ir_2_seen = true;
-      }
-
-      time_ir_sensor_2_last_value = micros();
-    }
-    return true;
+    is_metal=false;
   }
-  Coin_Sorter(type_invalid_metal);
-
-  return false;  
+  else
+  {
+    Coin_Sorter(type_invalid_metal);
+    return;
+  }
+  
+  EEPROMMemoryValue += Get_Inserted_Value();
+  EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
 }
 
 byte Get_Inserted_Value()
@@ -392,7 +407,7 @@ bool Button_Search()
 {
   for (byte search_index = 0; search_index < 10; search_index++)
   {
-    if (digitalRead(button_pin_start + search_index))
+    if (!digitalRead(button_pin_start + search_index))
     {
       button_value = search_index;
       return true;
