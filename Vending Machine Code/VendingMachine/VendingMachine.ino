@@ -403,80 +403,66 @@ void Return_Coin(coin_type type)
 }
 
 // BUTTON functions
+
+
 bool Button_Search()
 {
-  for (byte search_index = 0; search_index < 10; search_index++)
+  for (byte search_index = 0; search_index < 10; search_index++)  // search through button pins
   {
-    if (!digitalRead(button_pin_start + search_index))
+    if (!digitalRead(button_pin_start + search_index))            // if button on searched pin is pressed
     {
-      button_value = search_index;
+      Motor_Search(search_index)
       return true;
     }
   }
-  button_value = 255;
   return false;
 }
 
-bool Motor_Search()
+bool Motor_Search(byte search_index)
 {
-  for (byte y = 0; y < 5; y++)
+  for (byte ground = 0; ground < 5; ground++) // col of motors
   {
-    for (byte x = 0; x < 4; x++)
+    for (byte power = 0; power < 4; power++)  // row of motors
     {
-      if (motor_matrix[y][x] == button_value){
-        if (cost_matrix[y][x] > EEPROMMemoryValue)
+      if (motor_matrix[ground][power] == search_index){     // grid contains right item
+        if (cost_matrix[ground][power] > EEPROMMemoryValue) // enough money
         {
-          last_unique_message = millis();
-          Write_To_LCD("Saknar " + String(cost_matrix[y][x] - EEPROMMemoryValue) + "kr", 0, 1);
-
+          Write_To_LCD("Saknar " + String(cost_matrix[ground][power] - EEPROMMemoryValue) + "kr", 0, 1);
           return false;
         }
-        else if (Return_Items(y, x))
+        else if (Managed_To_Return_Items(ground, power))    // try to dispense items
         {
-          EEPROMMemoryValue -= cost_matrix[y][x];
-          EEPROM.write(adress_current_inserted_value, EEPROMMemoryValue);
-
-          motor_ground = y;
-          motor_power = x;
-
-          last_unique_message = millis();
           Write_To_LCD("Bra köp!", 0, 0);
           return true;
         }
       }
     }
   }
-
-  last_unique_message = millis();
+  // no items got dispensed
   Write_To_LCD("Sökt produkt är", 0, 0);
   Write_To_LCD("slut i lager", 0, 1);  
-
-  motor_ground = 255;
-  motor_power = 255;
   return false;
 }
 
-bool Return_Items(byte y, byte x)
+bool Managed_To_Return_Items(byte ground, byte power)
 {
-  y += motor_ground_pin_start;
-  x += motor_power_pin_start;
+  ground += motor_ground_pin_start;
+  power += motor_power_pin_start;
 
   motor_time_start = millis();
-  time = 0;
-
-  Start_Motor(y, x);
+  Start_Motor(y, x);                        // start motor (stops automatically)
 
   do
   {
     time = millis() - motor_time_start;
     
-    ir_item_val = digitalRead(ir_item_pin);
-    if (ir_item_val)
+    ir_item_val = digitalRead(ir_item_pin); 
+    if (ir_item_val)                        // check sensor for dispensed item
     {
       return true;
     }
 
-  } while (time < item_sensor_delay);
+  } while (time < item_sensor_delay);       // expected wait time for item to dispence
 
   return false;
 }
